@@ -141,10 +141,23 @@ class Bottleneck(nn.Module):
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
 
+class BottleneckG(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super(BottleneckG, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1, g=g)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+
 class BottleneckCSP(nn.Module):
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super().__init__()
+        super(BottleneckCSP, self).__init__()
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
@@ -152,12 +165,13 @@ class BottleneckCSP(nn.Module):
         self.cv4 = Conv(2 * c_, c2, 1, 1)
         self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
         self.act = nn.SiLU()
-        self.m = nn.Sequential(*(Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)))
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
 
     def forward(self, x):
         y1 = self.cv3(self.m(self.cv1(x)))
         y2 = self.cv2(x)
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
 
 class BottleneckCSPF(nn.Module):
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
@@ -177,10 +191,158 @@ class BottleneckCSPF(nn.Module):
         y2 = self.cv2(x)
         return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
 
-class BottleneckCSPTR(nn.Module):
+
+class BottleneckCSPL(nn.Module):
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super(BottleneckCSPTR, self).__init__()
+        super(BottleneckCSPL, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        #self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        return self.act(self.bn(torch.cat((y1, y2), dim=1)))
+
+
+class BottleneckCSPLG(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=3, e=0.25):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPLG, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, g*c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(g*c_, g*c_, 1, 1, groups=g, bias=False)
+        #self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d((1+g) * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[BottleneckG(g*c_, g*c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        return self.act(self.bn(torch.cat((y1, y2), dim=1)))
+
+
+class BottleneckCSPSE(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPSE, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.cs = ConvSqu(c1, c1//8, 1, 1)
+        self.cvsig = ConvSig(c1//8, c1, 1, 1)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        x = x * self.cvsig(self.cs(self.avg_pool(x))).expand_as(x)
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
+
+class BottleneckCSPSEA(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPSEA, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.cs = ConvSqu(c1, c1//8, 1, 1)
+        self.cvsig = ConvSig(c1//8, c1, 1, 1)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        x = x + x * self.cvsig(self.cs(self.avg_pool(x))).expand_as(x)
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
+
+class BottleneckCSPSAM(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPSAM, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cvsig = ConvSig(c1, c1, 1, 1)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        x = x * self.cvsig(x)
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
+
+class BottleneckCSPSAMA(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPSAMA, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cvsig = ConvSig(c1, c1, 1, 1)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        x = x + x * self.cvsig(x)
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
+
+class BottleneckCSPSAMB(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPSAMB, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cvsig = ConvSig(c2, c2, 1, 1)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        y = self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+        return y * self.cvsig(y)
+
+
+class BottleneckCSPGC(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPGC, self).__init__()
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
@@ -188,30 +350,160 @@ class BottleneckCSPTR(nn.Module):
         self.cv4 = Conv(2 * c_, c2, 1, 1)
         self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
         self.act = nn.SiLU()
-        self.m = TransformerBlock(c_, c_, 4, n)
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+                     
+        self.channel_add_conv = nn.Sequential(
+            nn.Conv2d(c2, c2, kernel_size=1),
+            nn.LayerNorm([c2, 1, 1]),
+            nn.ReLU(inplace=True),  # yapf: disable
+            nn.Conv2d(c2, c2, kernel_size=1))
+        
+        self.conv_mask = nn.Conv2d(c2, 1, kernel_size=1)
+        self.softmax = nn.Softmax(dim=2)
+        
+    def spatial_pool(self, x):
+        
+        batch, channel, height, width = x.size()
+        
+        input_x = x        
+        # [N, C, H * W]
+        input_x = input_x.view(batch, channel, height * width)
+        # [N, 1, C, H * W]
+        input_x = input_x.unsqueeze(1)
+        # [N, 1, H, W]
+        context_mask = self.conv_mask(x)
+        # [N, 1, H * W]
+        context_mask = context_mask.view(batch, 1, height * width)
+        # [N, 1, H * W]
+        context_mask = self.softmax(context_mask)
+        # [N, 1, H * W, 1]
+        context_mask = context_mask.unsqueeze(-1)
+        # [N, 1, C, 1]
+        context = torch.matmul(input_x, context_mask)
+        # [N, C, 1, 1]
+        context = context.view(batch, channel, 1, 1)
+
+        return context
 
     def forward(self, x):
         y1 = self.cv3(self.m(self.cv1(x)))
         y2 = self.cv2(x)
-        return self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+        y = self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
 
-class BottleneckCSP2TR(nn.Module):
+        return y + self.channel_add_conv(self.spatial_pool(y))
+
+
+class BottleneckCSPDNL(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPDNL, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c1, c_, 1, 1, bias=False)
+        self.cv3 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv4 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+        
+        
+        self.conv_query = nn.Conv2d(c2, c2, kernel_size=1)
+        self.conv_key = nn.Conv2d(c2, c2, kernel_size=1)        
+        self.conv_value = nn.Conv2d(c2, c2, kernel_size=1, bias=False)
+        self.conv_out = None        
+        self.scale = math.sqrt(c2)
+        self.temperature = 0.05        
+        self.softmax = nn.Softmax(dim=2)        
+        self.gamma = nn.Parameter(torch.zeros(1))        
+        self.conv_mask = nn.Conv2d(c2, 1, kernel_size=1)
+
+    def forward(self, x):
+        y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        y = self.cv4(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
+        # [N, C, T, H, W]
+        residual = y        
+        # [N, C, T, H', W']        
+        input_x = y
+        # [N, C', T, H, W]
+        query = self.conv_query(y)        
+        # [N, C', T, H', W']
+        key = self.conv_key(input_x)
+        value = self.conv_value(input_x)
+        # [N, C', H x W]
+        query = query.view(query.size(0), query.size(1), -1)        
+        # [N, C', H' x W']
+        key = key.view(key.size(0), key.size(1), -1)
+        value = value.view(value.size(0), value.size(1), -1)        
+        # channel whitening
+        key_mean = key.mean(2).unsqueeze(2)
+        query_mean = query.mean(2).unsqueeze(2)
+        key -= key_mean
+        query -= query_mean
+        # [N, T x H x W, T x H' x W']
+        sim_map = torch.bmm(query.transpose(1, 2), key)
+        sim_map = sim_map/self.scale
+        sim_map = sim_map/self.temperature
+        sim_map = self.softmax(sim_map)
+        # [N, T x H x W, C']
+        out_sim = torch.bmm(sim_map, value.transpose(1, 2))        
+        # [N, C', T x H x W]
+        out_sim = out_sim.transpose(1, 2)        
+        # [N, C', T,  H, W]
+        out_sim = out_sim.view(out_sim.size(0), out_sim.size(1), *y.size()[2:]).contiguous()
+        out_sim = self.gamma * out_sim        
+        # [N, 1, H', W']
+        mask = self.conv_mask(input_x)
+        # [N, 1, H'x W']
+        mask = mask.view(mask.size(0), mask.size(1), -1)
+        mask = self.softmax(mask)
+        # [N, C, 1, 1]
+        out_gc = torch.bmm(value, mask.permute(0,2,1)).unsqueeze(-1).contiguous()
+
+        return out_sim + out_gc + residual
+
+
+class BottleneckCSP2(nn.Module):
     # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
     def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super(BottleneckCSP2TR, self).__init__()
+        super(BottleneckCSP2, self).__init__()
         c_ = int(c2)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = nn.Conv2d(c_, c_, 1, 1, bias=False)
         self.cv3 = Conv(2 * c_, c2, 1, 1)
         self.bn = nn.BatchNorm2d(2 * c_) 
         self.act = nn.SiLU()
-        self.m = TransformerBlock(c_, c_, 4, n)
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
 
     def forward(self, x):
         x1 = self.cv1(x)
         y1 = self.m(x1)
         y2 = self.cv2(x1)
         return self.cv3(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
+
+class BottleneckCSP2SAM(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSP2SAM, self).__init__()
+        c_ = int(c2)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cvsig = ConvSig(c_, c_, 1, 1)
+        self.cv2 = nn.Conv2d(c_, c_, 1, 1, bias=False)
+        self.cv3 = Conv(2 * c_, c2, 1, 1)
+        self.bn = nn.BatchNorm2d(2 * c_) 
+        self.act = nn.SiLU()
+        self.m = nn.Sequential(*[Bottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x1 = x1 * self.cvsig(x1).contiguous()
+        y1 = self.m(x1)
+        y2 = self.cv2(x1)
+        return self.cv3(self.act(self.bn(torch.cat((y1, y2), dim=1))))
+
+
 
 
 class SPPCSPTR(nn.Module):
