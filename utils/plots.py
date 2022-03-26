@@ -17,7 +17,7 @@ import pandas as pd
 import seaborn as sn
 import torch
 from PIL import Image, ImageDraw, ImageFont
-
+from torchvision import transforms
 from utils.general import (CONFIG_DIR, FONT, LOGGER, Timeout, check_font, check_requirements, clip_coords,
                            increment_path, is_ascii, is_chinese, try_except, xywh2xyxy, xyxy2xywh)
 from utils.metrics import fitness
@@ -148,6 +148,41 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detec
             plt.close()
             np.save(str(f.with_suffix('.npy')), x[0].cpu().numpy())  # npy save
 
+
+def feature_map_visualization(features, model_type, model_id, feature_num=64):
+    """
+    features: The feature map which you need to visualization
+    model_type: The type of feature map
+    model_id: The id of feature map
+    feature_num: The amount of visualization you need
+    """
+    save_dir = "features/"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+ 
+    # print(features.shape)
+    # block by channel dimension
+    blocks = torch.chunk(features, features.shape[1], dim=1)
+ 
+    # # size of feature
+    # size = features.shape[2], features.shape[3]
+ 
+    plt.figure()
+    for i in range(feature_num):
+        torch.squeeze(blocks[i])
+        feature = transforms.ToPILImage()(blocks[i].squeeze())
+        # print(feature)
+        ax = plt.subplot(int(math.sqrt(feature_num)), int(math.sqrt(feature_num)), i+1)
+        ax.set_xticks([])
+        ax.set_yticks([])
+ 
+        plt.imshow(feature)
+        # gray feature
+        # plt.imshow(feature, cmap='gray')
+ 
+    # plt.show()
+    plt.savefig(save_dir + '{}_{}_feature_map_{}.png'
+                .format(model_type.split('.')[2], model_id, feature_num), dpi=300)
 
 def hist2d(x, y, n=100):
     # 2d histogram used in labels.png and evolve.png

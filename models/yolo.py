@@ -21,7 +21,7 @@ from models.common import *
 from models.experimental import *
 from utils.autoanchor import check_anchor_order
 from utils.general import LOGGER, check_version, check_yaml, make_divisible, print_args
-from utils.plots import feature_visualization
+from utils.plots import feature_visualization, feature_map_visualization
 from utils.torch_utils import fuse_conv_and_bn, initialize_weights, model_info, scale_img, select_device, time_sync
 
 try:
@@ -150,6 +150,11 @@ class Model(nn.Module):
             y.append(x if m.i in self.save else None)  # save output
             if visualize:
                 feature_visualization(x, m.type, m.i, save_dir=visualize)
+            # Feature map visualization added here
+            feature_vis = True
+            if m.type == 'models.common.SPP' and feature_vis:
+                print(m.type, m.i)
+                feature_map_visualization(x, m.type, m.i)   
         return x
 
     def _descale_pred(self, p, flips, scale, img_size):
