@@ -179,7 +179,8 @@ def feature_map_visualization(features, model_type, model_id, feature_num=64):
         plt.imshow(feature)
         # gray feature
         # plt.imshow(feature, cmap='gray')
- 
+    print('{}_{}_feature_map_{}.png'
+                .format(model_type.split('.')[2], model_id, feature_num))    
     # plt.show()
     plt.savefig(save_dir + '{}_{}_feature_map_{}.png'
                 .format(model_type.split('.')[2], model_id, feature_num), dpi=300)
