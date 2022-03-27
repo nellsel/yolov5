@@ -149,16 +149,13 @@ def feature_visualization(x, module_type, stage, n=32, save_dir=Path('runs/detec
             np.save(str(f.with_suffix('.npy')), x[0].cpu().numpy())  # npy save
 
 
-def feature_map_visualization(features, model_type, model_id, feature_num=64):
+def feature_map_visualization(features, model_type, model_id, feature_num=64, save_dir=Path('runs/detect/features')):
     """
     features: The feature map which you need to visualization
     model_type: The type of feature map
     model_id: The id of feature map
     feature_num: The amount of visualization you need
     """
-    save_dir = "features/"
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
  
     # print(features.shape)
     # block by channel dimension
@@ -179,7 +176,7 @@ def feature_map_visualization(features, model_type, model_id, feature_num=64):
         plt.imshow(feature)
         # gray feature
         # plt.imshow(feature, cmap='gray')
-    print('{}_{}_feature_map_{}.png'
+    print(save_dir + '{}_{}_feature_map_{}.png'
                 .format(model_type.split('.')[2], model_id, feature_num))    
     # plt.show()
     plt.savefig(save_dir + '{}_{}_feature_map_{}.png'
