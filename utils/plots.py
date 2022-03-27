@@ -163,7 +163,7 @@ def feature_map_visualization(features, model_type, model_id, feature_num=64, sa
  
     # # size of feature
     # size = features.shape[2], features.shape[3]
- 
+    
     plt.figure()
     for i in range(feature_num):
         torch.squeeze(blocks[i])
@@ -176,11 +176,10 @@ def feature_map_visualization(features, model_type, model_id, feature_num=64, sa
         plt.imshow(feature)
         # gray feature
         # plt.imshow(feature, cmap='gray')
-    print(save_dir + '{}_{}_feature_map_{}.png'
-                .format(model_type.split('.')[2], model_id, feature_num))    
+    f = save_dir / '{}_{}_feature_map_{}.png'.format(model_type.split('.')[2], model_id, feature_num)  # filename
+    print(f)    
     # plt.show()
-    plt.savefig(save_dir + '{}_{}_feature_map_{}.png'
-                .format(model_type.split('.')[2], model_id, feature_num), dpi=300)
+    plt.savefig(f, dpi=300)
 
 def hist2d(x, y, n=100):
     # 2d histogram used in labels.png and evolve.png
