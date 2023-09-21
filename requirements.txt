@@ -2,7 +2,7 @@
 
 # Base ----------------------------------------
 matplotlib>=3.2.2
-numpy>=1.18.5
+numpy>=1.22.2
 opencv-python>=4.1.2
 Pillow>=7.1.2
 PyYAML>=5.3.1
@@ -35,3 +35,4 @@ seaborn>=0.11.0
 # pycocotools>=2.0  # COCO mAP
 # roboflow
 thop  # FLOPs computation
+wheel>=0.38.0 # not directly required, pinned by Snyk to avoid a vulnerability
